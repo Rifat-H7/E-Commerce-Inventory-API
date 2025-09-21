@@ -2,6 +2,8 @@
 using E_Commerce_Inventory.Application.Services;
 using E_Commerce_Inventory.Domain.Entities;
 using E_Commerce_Inventory.Domain.Interfaces;
+using E_Commerce_Inventory.Infrastructure.Services.Security;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -52,35 +54,48 @@ namespace E_Commerce_Inventory.Infrastructure.Services
                     };
                 }
 
-                // Create new user
-                var user = new User
+                // Begin transaction
+                await _unitOfWork.BeginTransactionAsync();
+
+                try
                 {
-                    Username = registerDto.Username,
-                    Email = registerDto.Email,
-                    PasswordHash = HashPassword(registerDto.Password),
-                    CreatedAt = DateTime.UtcNow
-                };
+                    // Create new user
+                    var user = new User
+                    {
+                        Username = registerDto.Username,
+                        Email = registerDto.Email,
+                        PasswordHash = HashPassword(registerDto.Password),
+                        CreatedAt = DateTime.UtcNow
+                    };
 
-                await _unitOfWork.Users.AddAsync(user);
-                await _unitOfWork.SaveChangesAsync();
+                    await _unitOfWork.Users.AddAsync(user);
+                    await _unitOfWork.SaveChangesAsync();
 
-                // Generate tokens
-                var (accessToken, expiresAt) = GenerateAccessToken(user);
-                var refreshToken = await GenerateRefreshTokenAsync(user.Id);
+                    // Generate tokens
+                    var (accessToken, expiresAt) = GenerateAccessToken(user);
+                    var refreshToken = await CreateRefreshTokenAsync(user.Id);
 
-                var response = new AuthResponseDto
+                    await _unitOfWork.CommitTransactionAsync();
+
+                    var response = new AuthResponseDto
+                    {
+                        AccessToken = accessToken,
+                        RefreshToken = refreshToken,
+                        ExpiresAt = expiresAt,
+                    };
+
+                    return new ApiResponseDto<AuthResponseDto>
+                    {
+                        Success = true,
+                        Message = "User registered successfully",
+                        Data = response
+                    };
+                }
+                catch
                 {
-                    AccessToken = accessToken,
-                    RefreshToken = refreshToken,
-                    ExpiresAt = expiresAt,
-                };
-
-                return new ApiResponseDto<AuthResponseDto>
-                {
-                    Success = true,
-                    Message = "User registered successfully",
-                    Data = response
-                };
+                    await _unitOfWork.RollbackTransactionAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -122,7 +137,7 @@ namespace E_Commerce_Inventory.Infrastructure.Services
 
                 // Generate tokens
                 var (accessToken, expiresAt) = GenerateAccessToken(user);
-                var refreshToken = await GenerateRefreshTokenAsync(user.Id);
+                var refreshToken = await CreateRefreshTokenAsync(user.Id);
 
                 var response = new AuthResponseDto
                 {
@@ -175,29 +190,40 @@ namespace E_Commerce_Inventory.Infrastructure.Services
                     };
                 }
 
-                // Revoke old token
-                token.IsRevoked = true;
-                _unitOfWork.RefreshTokens.Update(token);
+                // Begin transaction
+                await _unitOfWork.BeginTransactionAsync();
 
-                // Generate new tokens
-                var (accessToken, expiresAt) = GenerateAccessToken(user);
-                var newRefreshToken = await GenerateRefreshTokenAsync(user.Id);
-
-                await _unitOfWork.SaveChangesAsync();
-
-                var response = new AuthResponseDto
+                try
                 {
-                    AccessToken = accessToken,
-                    RefreshToken = newRefreshToken,
-                    ExpiresAt = expiresAt,
-                };
+                    // Revoke old token
+                    token.IsRevoked = true;
+                    _unitOfWork.RefreshTokens.Update(token);
 
-                return new ApiResponseDto<AuthResponseDto>
+                    // Generate new tokens
+                    var (accessToken, expiresAt) = GenerateAccessToken(user);
+                    var newRefreshToken = await CreateRefreshTokenAsync(user.Id);
+
+                    await _unitOfWork.CommitTransactionAsync();
+
+                    var response = new AuthResponseDto
+                    {
+                        AccessToken = accessToken,
+                        RefreshToken = newRefreshToken,
+                        ExpiresAt = expiresAt,
+                    };
+
+                    return new ApiResponseDto<AuthResponseDto>
+                    {
+                        Success = true,
+                        Message = "Token refreshed successfully",
+                        Data = response
+                    };
+                }
+                catch
                 {
-                    Success = true,
-                    Message = "Token refreshed successfully",
-                    Data = response
-                };
+                    await _unitOfWork.RollbackTransactionAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -343,7 +369,7 @@ namespace E_Commerce_Inventory.Infrastructure.Services
             return (tokenHandler.WriteToken(token), expiresAt);
         }
 
-        private async Task<string> GenerateRefreshTokenAsync(int userId)
+        private async Task<string> CreateRefreshTokenAsync(int userId)
         {
             var randomBytes = new byte[32];
             using var rng = RandomNumberGenerator.Create();
@@ -359,6 +385,7 @@ namespace E_Commerce_Inventory.Infrastructure.Services
             };
 
             await _unitOfWork.RefreshTokens.AddAsync(refreshToken);
+            await _unitOfWork.SaveChangesAsync();
             return token;
         }
     }

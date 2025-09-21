@@ -119,5 +119,23 @@ namespace E_Commerce_Inventory.Controllers
 
             return NotFound(result);
         }
+
+        /// <summary>
+        /// Create a new product with image file upload
+        /// </summary>
+        [HttpPost("with-file")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> CreateWithFile([FromForm] CreateProductWithFileDto createDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _productService.CreateWithFileAsync(createDto);
+
+            if (result.Success)
+                return CreatedAtAction(nameof(GetById), new { id = result.Data!.Id }, result);
+
+            return BadRequest(result);
+        }
     }
 }

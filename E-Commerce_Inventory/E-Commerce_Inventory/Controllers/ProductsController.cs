@@ -98,5 +98,26 @@ namespace E_Commerce_Inventory.Controllers
 
             return BadRequest(result);
         }
+
+        /// <summary>
+        /// Search products by name or description
+        /// </summary>
+        [HttpGet("search")]
+        public async Task<IActionResult> Search([FromQuery] string keyword)
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+                return BadRequest(new ApiResponseDto<IEnumerable<ProductDto>>
+                {
+                    Success = false,
+                    Message = "Search keyword cannot be empty"
+                });
+
+            var result = await _productService.SearchAsync(keyword);
+
+            if (result.Success)
+                return Ok(result);
+
+            return NotFound(result);
+        }
     }
 }

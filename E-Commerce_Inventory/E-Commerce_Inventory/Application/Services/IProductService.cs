@@ -9,5 +9,6 @@ namespace E_Commerce_Inventory.Application.Services
         Task<ApiResponseDto<ProductDto>> GetByIdAsync(int id);
         Task<ApiResponseDto<ProductDto>> UpdateAsync(int id, UpdateProductDto updateDto);
         Task<ApiResponseDto<bool>> DeleteAsync(int id);
+        Task<ApiResponseDto<IEnumerable<ProductDto>>> SearchAsync(string query);
     }
 }

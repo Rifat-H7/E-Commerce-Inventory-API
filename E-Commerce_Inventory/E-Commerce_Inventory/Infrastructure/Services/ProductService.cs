@@ -382,5 +382,60 @@ namespace E_Commerce_Inventory.Infrastructure.Services
 
             return errors;
         }
+
+        public async Task<ApiResponseDto<IEnumerable<ProductDto>>> SearchAsync(string keyword)
+        {
+            try
+            {
+                var products = await _unitOfWork.Products
+                    .FindAsync(p => p.Name.Contains(keyword) || p.Description.Contains(keyword));
+
+                if (!products.Any())
+                {
+                    return new ApiResponseDto<IEnumerable<ProductDto>>
+                    {
+                        Success = false,
+                        Message = "No products found matching the search keyword"
+                    };
+                }
+
+                // Map results to DTO
+                var productDtos = new List<ProductDto>();
+                foreach (var product in products)
+                {
+                    var category = await _unitOfWork.Categories.GetByIdAsync(product.CategoryId);
+
+                    productDtos.Add(new ProductDto
+                    {
+                        Id = product.Id,
+                        Name = product.Name,
+                        Description = product.Description,
+                        Price = product.Price,
+                        Stock = product.Stock,
+                        ImageUrl = product.ImageUrl,
+                        CategoryId = product.CategoryId,
+                        CategoryName = category?.Name ?? "Unknown",
+                        CreatedAt = product.CreatedAt,
+                        UpdatedAt = product.UpdatedAt
+                    });
+                }
+
+                return new ApiResponseDto<IEnumerable<ProductDto>>
+                {
+                    Success = true,
+                    Message = "Products retrieved successfully",
+                    Data = productDtos
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponseDto<IEnumerable<ProductDto>>
+                {
+                    Success = false,
+                    Message = "An error occurred while searching for products",
+                    Errors = new List<string> { ex.Message }
+                };
+            }
+        }
     }
 }

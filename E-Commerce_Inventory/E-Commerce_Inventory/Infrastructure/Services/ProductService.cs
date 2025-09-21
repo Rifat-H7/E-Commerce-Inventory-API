@@ -294,41 +294,7 @@ namespace E_Commerce_Inventory.Infrastructure.Services
             }
         }
 
-        public async Task<ApiResponseDto<bool>> DeleteAsync(int id)
-        {
-            try
-            {
-                var product = await _unitOfWork.Products.GetByIdAsync(id);
-                if (product == null)
-                {
-                    return new ApiResponseDto<bool>
-                    {
-                        Success = false,
-                        Message = "Product not found"
-                    };
-                }
-
-                _unitOfWork.Products.Delete(product);
-                await _unitOfWork.SaveChangesAsync();
-
-                return new ApiResponseDto<bool>
-                {
-                    Success = true,
-                    Message = "Product deleted successfully",
-                    Data = true
-                };
-            }
-            catch (Exception ex)
-            {
-                return new ApiResponseDto<bool>
-                {
-                    Success = false,
-                    Message = "An error occurred while deleting the product",
-                    Errors = new List<string> { ex.Message }
-                };
-            }
-        }
-
+        
         private List<string> ValidateCreateProduct(CreateProductDto dto)
         {
             var errors = new List<string>();
@@ -437,5 +403,107 @@ namespace E_Commerce_Inventory.Infrastructure.Services
                 };
             }
         }
+
+        // ADD this to constructor parameters:
+        private readonly IFileService _fileService;
+
+        public ProductService(IUnitOfWork unitOfWork, IFileService fileService)
+        {
+            _unitOfWork = unitOfWork;
+            _fileService = fileService; // ADD this line
+        }
+
+        public async Task<ApiResponseDto<ProductDto>> CreateWithFileAsync(CreateProductWithFileDto createDto)
+        {
+            try
+            {
+                // Check if category exists
+                var category = await _unitOfWork.Categories.GetByIdAsync(createDto.CategoryId);
+                if (category == null)
+                    return new ApiResponseDto<ProductDto> { Success = false, Message = "Category not found" };
+
+                string? finalImageUrl = null;
+
+                // Handle image file upload
+                if (createDto.ImageFile != null)
+                {
+                    var uploadResult = await _fileService.UploadImageAsync(createDto.ImageFile, "products");
+                    if (!uploadResult.Success)
+                        return new ApiResponseDto<ProductDto> { Success = false, Message = uploadResult.Message, Errors = uploadResult.Errors };
+                    finalImageUrl = uploadResult.Data;
+                }
+                // Handle image URL if no file provided
+                else if (!string.IsNullOrEmpty(createDto.ImageUrl))
+                {
+                    var urlValidation = await _fileService.ValidateImageUrlAsync(createDto.ImageUrl);
+                    if (!urlValidation.Success)
+                        return new ApiResponseDto<ProductDto> { Success = false, Message = urlValidation.Message };
+                    finalImageUrl = createDto.ImageUrl;
+                }
+
+                var product = new Product
+                {
+                    Name = createDto.Name,
+                    Description = createDto.Description,
+                    Price = createDto.Price,
+                    Stock = createDto.Stock,
+                    ImageUrl = finalImageUrl,
+                    CategoryId = createDto.CategoryId,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Products.AddAsync(product);
+                await _unitOfWork.SaveChangesAsync();
+
+                return new ApiResponseDto<ProductDto>
+                {
+                    Success = true,
+                    Message = "Product created successfully",
+                    Data = new ProductDto
+                    {
+                        Id = product.Id,
+                        Name = product.Name,
+                        Description = product.Description,
+                        Price = product.Price,
+                        Stock = product.Stock,
+                        ImageUrl = product.ImageUrl,
+                        CategoryId = product.CategoryId,
+                        CategoryName = category.Name,
+                        CreatedAt = product.CreatedAt
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponseDto<ProductDto> { Success = false, Message = "Error creating product", Errors = new List<string> { ex.Message } };
+            }
+        }
+
+        public async Task<ApiResponseDto<bool>> DeleteAsync(int id)
+        {
+            try
+            {
+                var product = await _unitOfWork.Products.GetByIdAsync(id);
+                if (product == null)
+                    return new ApiResponseDto<bool> { Success = false, Message = "Product not found" };
+
+                // DELETE associated image file if it exists
+                if (!string.IsNullOrEmpty(product.ImageUrl))
+                {
+                    await _fileService.DeleteImageAsync(product.ImageUrl);
+                }
+
+                _unitOfWork.Products.Delete(product);
+                await _unitOfWork.SaveChangesAsync();
+
+                return new ApiResponseDto<bool> { Success = true, Message = "Product deleted successfully", Data = true };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponseDto<bool> { Success = false, Message = "Error deleting product", Errors = new List<string> { ex.Message } };
+            }
+        }
+
+
     }
 }

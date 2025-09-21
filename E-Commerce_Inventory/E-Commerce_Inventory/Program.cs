@@ -29,6 +29,14 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddTransient<IPasswordUtils, PasswordUtils>();
 
+// Register IHttpContextAccessor
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<IFileService, FileService>();
+
+// ADD this line after app.UseHttpsRedirection():
+
+
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (string.IsNullOrEmpty(jwtSecret))
@@ -114,7 +122,7 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-
+app.UseStaticFiles();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -141,6 +149,12 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     context.Database.EnsureCreated();
+
+    // ADD these lines:
+    var environment = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+    var uploadPath = Path.Combine(environment.WebRootPath, "uploads", "products");
+    if (!Directory.Exists(uploadPath))
+        Directory.CreateDirectory(uploadPath);
 }
 
 app.Run();
